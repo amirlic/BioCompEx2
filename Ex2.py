@@ -1,13 +1,12 @@
 import string
 from random import shuffle, randint, uniform
 import re
-import heapq
 from itertools import islice
 import operator
 
 
+# Return first n items of the iterable as a list
 def take(n, iterable):
-    # Return first n items of the iterable as a list
     return list(islice(iterable, n))
 
 
@@ -18,6 +17,9 @@ class GeneticAlgorithm:
         self.enc = ""
         self.generation = []
         self.fitnesses = {}
+        self.population_size = 100
+        self.generations_number = 200
+        self.mutation_chance = 0.05
 
     # read the encrypt file to string var
     def read_enc_file(self):
@@ -28,10 +30,11 @@ class GeneticAlgorithm:
     def read_dict_file(self):
         with open("dict.txt", 'r') as dict_file:
             self.dictionary = dict_file.read()
+        self.dictionary = re.split('[\n]', self.dictionary)
 
     # init the permutation var
     def initialize_permutations(self):
-        for i in range(100):
+        for i in range(self.population_size):
             letters = list(string.ascii_lowercase)
             initial_enc = list(letters)
             shuffle(initial_enc)
@@ -76,27 +79,32 @@ class GeneticAlgorithm:
     # create new generation using the genetic functions
     def new_generation(self):
         # get the fittest individuals
-        fittest = [self.generation[i] for i in self.selection(10)[:10]]
+        fittest_percent = int(0.1 * self.population_size)
+        fittest = self.replication(fittest_percent)
         # create crossovers from the current population
-        crossovered = self.crossover()
+        crossover_percent = self.population_size - fittest_percent
+        crossovered = self.crossover(crossover_percent)
         crossovered.extend(fittest)
         # mutate the population and set it as the new generation
         self.generation = self.mutations(crossovered)
 
     # select the fittest individuals in the population
-    def selection(self, n):
-        return [key for key, value in self.fitnesses.items() if value in heapq.nlargest(n, self.fitnesses.values())]
+    def replication(self, n):
+        sorted_fitnesses = sorted(self.fitnesses.items(), key=operator.itemgetter(1))
+        sorted_fitnesses.reverse()
+        fittest_indexes = sorted_fitnesses[:n]
+        return [self.generation[i] for i, _ in fittest_indexes]
 
     # crossover the population giving fitter individuals better chances to be crossovered
-    def crossover(self):
-        sorted_scores = sorted(self.fitnesses.items(), key=operator.itemgetter(1))
-        sorted_scores.reverse()
+    def crossover(self, crossover_precent):
+        sorted_fitnesses = sorted(self.fitnesses.items(), key=operator.itemgetter(1))
+        sorted_fitnesses.reverse()
         probes = []
-        for cons in sorted_scores:
+        for cons in sorted_fitnesses:
             probes.extend([cons[0]]*cons[1])
         next_generation = []
         # create crossovers from the current population
-        for i in range(90):
+        for i in range(crossover_precent):
             parent1 = self.generation[probes[randint(0, len(probes) - 1)]]
             parent2 = self.generation[probes[randint(0, len(probes) - 1)]]
             # merge two genes to one in random point
@@ -111,9 +119,9 @@ class GeneticAlgorithm:
     def mutations(self, current_generation):
         # for each individual mutate it by const probability
         for individual in current_generation:
-            if uniform(0, 1) <= 0.03:
-                mutation_key_letter = string.ascii_lowercase[randint(1, len(string.ascii_lowercase)) - 1]
-                mutation_value_letter = string.ascii_lowercase[randint(1, len(string.ascii_lowercase)) - 1]
+            if uniform(0, 1) <= self.mutation_chance:
+                mutation_key_letter = string.ascii_lowercase[randint(0, len(string.ascii_lowercase)) - 1]
+                mutation_value_letter = string.ascii_lowercase[randint(0, len(string.ascii_lowercase)) - 1]
                 individual[mutation_key_letter] = mutation_value_letter
         return current_generation
 
@@ -121,14 +129,24 @@ class GeneticAlgorithm:
     def run_genetic_algo(self):
         self.initialize_permutations()
         fittest = None
-        for i in range(20):
-            self.calculate_generation_fitnesses()
+        last_fittest = None
+        generation_mutation_counter = 0
+        for i in range(self.generations_number):
+            last_fittest = fittest
             # check whether the current fittest is the "right" solution
             fittest = self.fittest()
+            if last_fittest:
+                if self.calculate_fitness(last_fittest) + 10  > self.calculate_fitness(fittest):
+                    generation_mutation_counter += 1
             decrypt_text = self.decrypt_text(fittest)
             decrypt_len = len([x for x in re.split('[ \n,.\b]', decrypt_text) if x is not ''])
             if self.calculate_fitness(fittest)/float(decrypt_len) > 0.8:
                 return [fittest, self.calculate_fitness(fittest), self.decrypt_text(fittest)]
+            if generation_mutation_counter > self.generations_number * 0.1:
+                self.mutation_chance *= 2
+                generation_mutation_counter = 0
+                if self.mutation_chance > 0.25:
+                      self.mutation_chance = 0.05
             # create new generation
             self.new_generation()
         return [fittest, self.calculate_fitness(fittest), self.decrypt_text(fittest)]
@@ -136,8 +154,9 @@ class GeneticAlgorithm:
     # return the fittest individual in thr current population
     def fittest(self):
         self.calculate_generation_fitnesses()
-        fitest_index = max(self.fitnesses.iteritems(), key=operator.itemgetter(1))[0]
-        return self.generation[fitest_index]
+        fittest_index = max(self.fitnesses.iteritems(), key=operator.itemgetter(1))[0]
+        return self.generation[fittest_index]
+
 
 # main
 a = GeneticAlgorithm()
